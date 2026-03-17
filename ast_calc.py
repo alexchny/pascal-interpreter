@@ -77,6 +77,12 @@ class BinOp(AST):
         self.right = right
 
 
+class UnaryOp(AST):
+    def __init__(self, op: Token, expr: AST) -> None:
+        self.token = self.op = op
+        self.expr = expr
+
+
 class Num(AST):
     def __init__(self, token: Token) -> None:
         self.token = token
@@ -97,9 +103,18 @@ class Parser:
         else:
             self.error()
     
-    def factor(self) -> Num:
+    def factor(self) -> Num | BinOp | UnaryOp:
         token = self.curr_token
-        if token.type == INTEGER:
+
+        if token.type == ADD:
+            self.eat(ADD)
+            node = UnaryOp(token, self.factor())
+            return node
+        elif token.type == SUB:
+            self.eat(SUB)
+            node = UnaryOp(token, self.factor())
+            return node
+        elif token.type == INTEGER:
             self.eat(INTEGER)
             return Num(token)
         elif token.type == LPAR:
@@ -164,6 +179,13 @@ class Interpreter(NodeVisitor):
 
     def visit_Num(self, node: Num) -> int:
         return node.val
+
+    def visit_UnaryOp(self, node: UnaryOp) -> int:
+        op = node.op.type
+        if op == ADD:
+            return +self.visit(node.expr)
+        elif op == SUB:
+            return -self.visit(node.expr)
 
     def interpret(self) -> int:
         tree = self.parser.expr()
