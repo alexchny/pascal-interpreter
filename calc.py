@@ -1,4 +1,4 @@
-INTEGER, ADD, SUB, MUL, DIV, EOF = 'INTEGER', 'ADD', 'SUB', 'MUL', 'DIV', 'EOF'
+INTEGER, ADD, SUB, MUL, DIV, EOF, LPAR, RPAR = 'INTEGER', 'ADD', 'SUB', 'MUL', 'DIV', 'EOF', 'LPAR', 'RPAR'
 
 class Token:
     def __init__(self, type: str, val: int):
@@ -59,6 +59,14 @@ class Lexer:
             token = Token(DIV, self.curr_char)
             self.advance()
             return token
+        if self.curr_char == '(':
+            token = Token(LPAR, self.curr_char)
+            self.advance()
+            return token
+        if self.curr_char == ')':
+            token = Token(RPAR, self.curr_char)
+            self.advance()
+            return token
 
         self.error()
 
@@ -79,8 +87,16 @@ class Interpreter:
     
     def factor(self) -> int:
         token = self.curr_token
-        self.eat(INTEGER)
-        return token.val
+        if token.type == INTEGER:
+            self.eat(INTEGER)
+            return token.val
+        if token.type == LPAR:
+            self.eat(LPAR)
+            res = self.expr()
+            self.eat(RPAR)
+            return res
+            
+        self.error()
     
     def term(self) -> int:
         res = self.factor()
