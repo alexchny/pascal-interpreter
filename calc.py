@@ -1,4 +1,4 @@
-INTEGER, OPERATION, EOF = 'INTEGER', 'OPERATION', 'EOF'
+INTEGER, ADD, SUB, MUL, DIV, EOF = 'INTEGER', 'ADD', 'SUB', 'MUL', 'DIV', 'EOF'
 
 class Token:
     def __init__(self, type: str, val: int):
@@ -8,16 +8,16 @@ class Token:
     def __str__(self) -> str:
         return f"Token({self.type}, {self.val})"
 
-class Interpreter:
+
+class Lexer:
     def __init__(self, text: str):
         self.text = text
         self.pos = 0
-        self.curr_token = None
         self.curr_char = self.text[self.pos]
     
-    def error(self) -> Exception:
-        raise Exception("error parsing input")
-
+    def error(self):
+        raise Exception("Invalid char")
+    
     def advance(self) -> None:
         self.pos += 1
         if self.pos >= len(self.text):
@@ -43,40 +43,86 @@ class Interpreter:
             return Token(EOF, None)
         if self.curr_char.isdigit():
             return Token(INTEGER, self.integer())
-        if self.curr_char in "+-*/":    
-            token = Token(OPERATION, self.curr_char)
+        if self.curr_char == '+':    
+            token = Token(ADD, self.curr_char)
+            self.advance()
+            return token
+        if self.curr_char == '-':    
+            token = Token(SUB, self.curr_char)
+            self.advance()
+            return token
+        if self.curr_char == '*':    
+            token = Token(MUL, self.curr_char)
+            self.advance()
+            return token
+        if self.curr_char == '/':    
+            token = Token(DIV, self.curr_char)
             self.advance()
             return token
 
         self.error()
 
-    def eat(self, type: str):
+
+class Interpreter:
+    def __init__(self, text: str):
+        self.lexer = Lexer(text)
+        self.curr_token = self.lexer.get_next_token()
+    
+    def error(self):
+        raise Exception("Invalid syntax")
+
+    def eat(self, type: str) -> None:
         if type == self.curr_token.type:
-            self.curr_token = self.get_next_token()
+            self.curr_token = self.lexer.get_next_token()
         else:
             self.error()
     
-    def expr(self):
-        self.curr_token = self.get_next_token()
-        left = self.curr_token
+    def factor(self) -> int:
+        token = self.curr_token
         self.eat(INTEGER)
+        return token.val
+    
+    def term(self) -> int:
+        res = self.factor()
 
-        while self.curr_token.type != EOF:
-            op = self.curr_token
-            self.eat(OPERATION)
-            right = self.curr_token
-            self.eat(INTEGER)
+        while self.curr_token.type in (MUL, DIV):
+            token = self.curr_token
 
-            if op.val == '+':
-                left.val = left.val + right.val
-            elif op.val == '-':
-                left.val = left.val - right.val
-            elif op.val == '*':
-                left.val = left.val * right.val
-            else:
-                left.val = left.val // right.val
+            if token.type == MUL:
+                self.eat(MUL)
+                res = res * self.factor()
+            elif token.type == DIV:
+                self.eat(DIV)
+                res = res // self.factor()
 
-        return left.val
+        return res
+    
+    def expr(self) -> int:
+        res = self.term()
 
-inter = Interpreter("1+1 -3 * 100")
-print(inter.expr())
+        while self.curr_token.type in (ADD, SUB):
+            token = self.curr_token
+
+            if token.type == ADD:
+                self.eat(ADD)
+                res = res + self.term()
+            elif token.type == SUB:
+                self.eat(SUB)
+                res = res - self.term()
+
+        return res
+
+def main():
+    while True:
+        try:
+            text = input('calc> ')
+        except EOFError:
+            break
+        if not text:
+            continue
+        interpreter = Interpreter(text)
+        res = interpreter.expr()
+        print(res)
+
+if __name__ == '__main__':
+    main()
