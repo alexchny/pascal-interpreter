@@ -1,7 +1,8 @@
 INTEGER, ADD, SUB, MUL, DIV, EOF, LPAR, RPAR = 'INTEGER', 'ADD', 'SUB', 'MUL', 'DIV', 'EOF', 'LPAR', 'RPAR'
 
+
 class Token:
-    def __init__(self, type: str, val: int):
+    def __init__(self, type: str, val: int) -> None:
         self.type = type
         self.val = val
     
@@ -10,7 +11,7 @@ class Token:
 
 
 class Lexer:
-    def __init__(self, text: str):
+    def __init__(self, text: str) -> None:
         self.text = text
         self.pos = 0
         self.curr_char = self.text[self.pos]
@@ -44,100 +45,143 @@ class Lexer:
         if self.curr_char.isdigit():
             return Token(INTEGER, self.integer())
         if self.curr_char == '+':    
-            token = Token(ADD, self.curr_char)
             self.advance()
-            return token
+            return Token(ADD, '+')
         if self.curr_char == '-':    
-            token = Token(SUB, self.curr_char)
             self.advance()
-            return token
+            return Token(SUB, '-')
         if self.curr_char == '*':    
-            token = Token(MUL, self.curr_char)
             self.advance()
-            return token
+            return Token(MUL, '*')
         if self.curr_char == '/':    
-            token = Token(DIV, self.curr_char)
             self.advance()
-            return token
+            return Token(DIV, '/')
         if self.curr_char == '(':
-            token = Token(LPAR, self.curr_char)
             self.advance()
-            return token
+            return Token(LPAR, '(')
         if self.curr_char == ')':
-            token = Token(RPAR, self.curr_char)
             self.advance()
-            return token
+            return Token(RPAR, ')')
 
         self.error()
 
 
-class Interpreter:
-    def __init__(self, text: str):
-        self.lexer = Lexer(text)
+class AST:
+    pass
+
+
+class BinOp(AST):
+    def __init__(self, left: Token, op: Token, right: Token) -> None:
+        self.left = left
+        self.token = self.op = op
+        self.right = right
+
+
+class Num(AST):
+    def __init__(self, token: Token) -> None:
+        self.token = token
+        self.val = token.val
+
+
+class Parser:
+    def __init__(self, lexer: Lexer) -> None:
+        self.lexer = lexer
         self.curr_token = self.lexer.get_next_token()
     
     def error(self):
         raise Exception("Invalid syntax")
-
+    
     def eat(self, type: str) -> None:
-        if type == self.curr_token.type:
+        if self.curr_token.type == type:
             self.curr_token = self.lexer.get_next_token()
         else:
             self.error()
     
-    def factor(self) -> int:
+    def factor(self) -> Num:
         token = self.curr_token
         if token.type == INTEGER:
             self.eat(INTEGER)
-            return token.val
-        if token.type == LPAR:
+            return Num(token)
+        elif token.type == LPAR:
             self.eat(LPAR)
-            res = self.expr()
+            node = self.expr()
             self.eat(RPAR)
-            return res
-            
+            return node
+        
         self.error()
-    
-    def term(self) -> int:
-        res = self.factor()
+
+    def term(self) -> Num | BinOp:
+        node = self.factor()
 
         while self.curr_token.type in (MUL, DIV):
             token = self.curr_token
 
             if token.type == MUL:
                 self.eat(MUL)
-                res = res * self.factor()
             elif token.type == DIV:
                 self.eat(DIV)
-                res = res // self.factor()
+        
+            node = BinOp(left=node, op=token, right=self.factor())
+        
+        return node
 
-        return res
-    
-    def expr(self) -> int:
-        res = self.term()
+    def expr(self) -> Num | BinOp:
+        node = self.term()
 
         while self.curr_token.type in (ADD, SUB):
             token = self.curr_token
 
             if token.type == ADD:
                 self.eat(ADD)
-                res = res + self.term()
             elif token.type == SUB:
                 self.eat(SUB)
-                res = res - self.term()
 
-        return res
+            node = BinOp(left=node, op=token, right=self.term())
+        
+        return node
+
+
+class NodeVisitor:
+    def visit(self, node: AST) -> object:
+        method_name = 'visit_' + type(node).__name__
+        visitor = getattr(self, method_name)
+        return visitor(node)
+
+
+class Interpreter(NodeVisitor):
+    def __init__(self, parser: Parser) -> None:
+        self.parser = parser
+
+    def visit_BinOp(self, node: BinOp) -> int:
+        if node.op.type == ADD:
+            return self.visit(node.left) + self.visit(node.right)
+        elif node.op.type == SUB:
+            return self.visit(node.left) - self.visit(node.right)
+        elif node.op.type == MUL:
+            return self.visit(node.left) * self.visit(node.right)
+        elif node.op.type == DIV:
+            return self.visit(node.left) // self.visit(node.right)
+
+    def visit_Num(self, node: Num) -> int:
+        return node.val
+
+    def interpret(self) -> int:
+        tree = self.parser.expr()
+        return self.visit(tree)
+
 
 def main():
     while True:
         try:
-            text = input('calc> ')
+            text = input('pascal> ')
         except EOFError:
             break
         if not text:
             continue
-        interpreter = Interpreter(text)
-        res = interpreter.expr()
+        lexer = Lexer(text)
+        parser = Parser(lexer)
+        interpreter = Interpreter(parser)
+        res = interpreter.interpret()
         print(res)
 
 if __name__ == '__main__':
