@@ -1,4 +1,4 @@
-INTEGER, ADD, SUB, MUL, DIV, EOF, LPAR, RPAR = 'INTEGER', 'ADD', 'SUB', 'MUL', 'DIV', 'EOF', 'LPAR', 'RPAR'
+INTEGER, REAL, ADD, SUB, MUL, DIV, FDIV, EOF, LPAR, RPAR = 'INTEGER', 'REAL', 'ADD', 'SUB', 'MUL', 'DIV', 'FDIV', 'EOF', 'LPAR', 'RPAR'
 BEGIN, END, DOT, ID, ASSIGN, SEMI = 'BEGIN', 'END', 'DOT', 'ID', 'ASSIGN', 'SEMI'
 
 
@@ -13,7 +13,8 @@ class Token:
 
 RESERVED_KEYWORDS = {
     'BEGIN': Token('BEGIN', 'BEGIN'),
-    'END': Token('END', 'END')
+    'END': Token('END', 'END'),
+    'DIV': Token('DIV', 'DIV')
 }
 
 
@@ -28,10 +29,11 @@ class Lexer:
 
     def _id(self):
         res = ''
-        while self.curr_char is not None and self.curr_char.isalnum():
+        while self.curr_char is not None and (self.curr_char.isalnum() or self.curr_char == '_'):
             res += self.curr_char
             self.advance()
         
+        res = res.upper()
         token = RESERVED_KEYWORDS.get(res, Token(ID, res))
         return token
 
@@ -52,12 +54,16 @@ class Lexer:
          while self.curr_char is not None and self.curr_char.isspace():
             self.advance()
         
-    def integer(self) -> int:
+    def number(self) -> Token:
         res = ""
-        while self.curr_char is not None and self.curr_char.isdigit():
+        while self.curr_char is not None and (self.curr_char.isdigit() or (self.curr_char == '.' and '.' not in res)):
             res += self.curr_char
             self.advance()
-        return int(res)
+        
+        if '.' not in res:
+            return Token(INTEGER, int(res))
+        else:
+            return Token(REAL, float(res))
 
     def get_next_token(self) -> Token:
         self.skip_whitespace()
@@ -65,8 +71,8 @@ class Lexer:
         if self.pos >= len(self.text):
             return Token(EOF, None)
         if self.curr_char.isdigit():
-            return Token(INTEGER, self.integer())
-        if self.curr_char.isalpha():
+            return self.number()
+        if self.curr_char.isalpha() or self.curr_char == '_':
             return self._id()
         if self.curr_char == '.':
             self.advance()
@@ -89,7 +95,7 @@ class Lexer:
             return Token(MUL, '*')
         if self.curr_char == '/':    
             self.advance()
-            return Token(DIV, '/')
+            return Token(FDIV, '/')
         if self.curr_char == '(':
             self.advance()
             return Token(LPAR, '(')
@@ -179,6 +185,9 @@ class Parser:
         elif token.type == INTEGER:
             self.eat(INTEGER)
             return Num(token)
+        elif token.type == REAL:
+            self.eat(REAL)
+            return Num(token)
         elif token.type == LPAR:
             self.eat(LPAR)
             node = self.expr()
@@ -191,14 +200,15 @@ class Parser:
     def term(self) -> Num | BinOp:
         node = self.factor()
 
-        while self.curr_token.type in (MUL, DIV):
+        while self.curr_token.type in (MUL, DIV, FDIV):
             token = self.curr_token
 
             if token.type == MUL:
                 self.eat(MUL)
             elif token.type == DIV:
                 self.eat(DIV)
-        
+            elif token.type == FDIV:
+                self.eat(FDIV)
             node = BinOp(left=node, op=token, right=self.factor())
         return node
 
@@ -278,7 +288,7 @@ class Interpreter(NodeVisitor):
         self.parser = parser
         self.GLOBAL_SCOPE = {}
 
-    def visit_BinOp(self, node: BinOp) -> int:
+    def visit_BinOp(self, node: BinOp) -> int | float:
         if node.op.type == ADD:
             return self.visit(node.left) + self.visit(node.right)
         elif node.op.type == SUB:
@@ -287,8 +297,10 @@ class Interpreter(NodeVisitor):
             return self.visit(node.left) * self.visit(node.right)
         elif node.op.type == DIV:
             return self.visit(node.left) // self.visit(node.right)
+        elif node.op.type == FDIV:
+            return self.visit(node.left) / self.visit(node.right)
 
-    def visit_Num(self, node: Num) -> int:
+    def visit_Num(self, node: Num) -> int | float:
         return node.val
 
     def visit_UnaryOp(self, node: UnaryOp) -> int:
