@@ -1,5 +1,5 @@
-INTEGER, REAL, ADD, SUB, MUL, DIV, FDIV, EOF, LPAR, RPAR = 'INTEGER', 'REAL', 'ADD', 'SUB', 'MUL', 'DIV', 'FDIV', 'EOF', 'LPAR', 'RPAR'
-BEGIN, END, DOT, ID, ASSIGN, SEMI = 'BEGIN', 'END', 'DOT', 'ID', 'ASSIGN', 'SEMI'
+ADD, SUB, MUL, DIV, FDIV, INTEGER, REAL, EOF, LPAR, RPAR, DOT, COLON, COMMA, ID, ASSIGN, SEMI = 'ADD', 'SUB', 'MUL', 'DIV', 'FDIV', 'INTEGER', 'REAL', 'EOF', 'LPAR', 'RPAR', 'DOT', 'COLON', 'COMMA', 'ID', 'ASSIGN', 'SEMI'
+PROGRAM, VAR, BEGIN, END, INTEGER_TYPE, REAL_TYPE = 'PROGRAM', 'VAR', 'BEGIN', 'END', 'INTEGER_TYPE', 'REAL_TYPE'
 
 
 class Token:
@@ -12,8 +12,12 @@ class Token:
 
 
 RESERVED_KEYWORDS = {
+    'PROGRAM': Token('PROGRAM', 'PROGRAM'),
+    'VAR': Token('VAR', 'VAR'),
     'BEGIN': Token('BEGIN', 'BEGIN'),
     'END': Token('END', 'END'),
+    'INTEGER': Token(INTEGER_TYPE, 'INTEGER'),
+    'REAL': Token(REAL_TYPE, 'REAL'),
     'DIV': Token('DIV', 'DIV')
 }
 
@@ -22,7 +26,7 @@ class Lexer:
     def __init__(self, text: str) -> None:
         self.text = text
         self.pos = 0
-        self.curr_char = self.text[self.pos]
+        self.curr_char = self.text[self.pos] if self.text else ''
     
     def error(self):
         raise Exception("Invalid char")
@@ -53,6 +57,11 @@ class Lexer:
     def skip_whitespace(self) -> None:
          while self.curr_char is not None and self.curr_char.isspace():
             self.advance()
+    
+    def skip_comment(self) -> None:
+        while self.curr_char != '}':
+            self.advance()
+        self.advance()
         
     def number(self) -> Token:
         res = ""
@@ -61,49 +70,63 @@ class Lexer:
             self.advance()
         
         if '.' not in res:
-            return Token(INTEGER, int(res))
+            token = Token(INTEGER, int(res))
         else:
-            return Token(REAL, float(res))
+            token = Token(REAL, float(res))
+        return token
 
     def get_next_token(self) -> Token:
-        self.skip_whitespace()
+        while self.curr_char is not None:
+            self.skip_whitespace()
 
-        if self.pos >= len(self.text):
-            return Token(EOF, None)
-        if self.curr_char.isdigit():
-            return self.number()
-        if self.curr_char.isalpha() or self.curr_char == '_':
-            return self._id()
-        if self.curr_char == '.':
-            self.advance()
-            return Token(DOT, '.')
-        if self.curr_char == ';':
-            self.advance()
-            return Token(SEMI, ';')
-        if self.curr_char == ':' and self.peek() == '=':
-            self.advance()
-            self.advance()
-            return Token(ASSIGN, ':=')
-        if self.curr_char == '+':    
-            self.advance()
-            return Token(ADD, '+')
-        if self.curr_char == '-':    
-            self.advance()
-            return Token(SUB, '-')
-        if self.curr_char == '*':    
-            self.advance()
-            return Token(MUL, '*')
-        if self.curr_char == '/':    
-            self.advance()
-            return Token(FDIV, '/')
-        if self.curr_char == '(':
-            self.advance()
-            return Token(LPAR, '(')
-        if self.curr_char == ')':
-            self.advance()
-            return Token(RPAR, ')')
+            if self.pos >= len(self.text):
+                return Token(EOF, None)
+            if self.curr_char.isdigit():
+                return self.number()
+            if self.curr_char.isalpha() or self.curr_char == '_':
+                return self._id()
+            if self.curr_char == '.':
+                self.advance()
+                return Token(DOT, '.')
+            if self.curr_char == ';':
+                self.advance()
+                return Token(SEMI, ';')
+            if self.curr_char == ':' and self.peek() == '=':
+                self.advance()
+                self.advance()
+                return Token(ASSIGN, ':=')
+            if self.curr_char == ':':
+                self.advance()
+                return Token(COLON, ':')
+            if self.curr_char == ',':
+                self.advance()
+                return Token(COMMA, ',')
+            if self.curr_char == '{':
+                self.advance()
+                self.skip_comment()
+                continue
+            if self.curr_char == '+':    
+                self.advance()
+                return Token(ADD, '+')
+            if self.curr_char == '-':    
+                self.advance()
+                return Token(SUB, '-')
+            if self.curr_char == '*':    
+                self.advance()
+                return Token(MUL, '*')
+            if self.curr_char == '/':    
+                self.advance()
+                return Token(FDIV, '/')
+            if self.curr_char == '(':
+                self.advance()
+                return Token(LPAR, '(')
+            if self.curr_char == ')':
+                self.advance()
+                return Token(RPAR, ')')
+            else:
+                self.error()
 
-        self.error()
+        return Token(EOF, None)
 
 
 class AST:
@@ -137,7 +160,7 @@ class Compound(AST):
 class Assign(AST):
     def __init__(self, left: Token, op: Token, right: Token) -> None:
         self.left = left
-        self.node = self.op = op
+        self.op = op
         self.right = right
 
 
@@ -145,6 +168,30 @@ class Var(AST):
     def __init__(self, token: Token) -> None:
         self.token = token
         self.val = token.val
+
+
+class Type(AST):
+    def __init__(self, token: Token) -> None:
+        self.token = token
+        self.val = token.val
+
+
+class VarDecl(AST):
+    def __init__(self, var_node: Var, type_node: Type) -> None:
+        self.var_node = var_node
+        self.type_node = type_node
+
+
+class Block(AST):
+    def __init__(self, declarations: list[VarDecl], compound_statement: Compound) -> None:
+        self.declarations = declarations
+        self.compound_statement = compound_statement
+
+
+class Program(AST):
+    def __init__(self, name: Token, block: Block) -> None:
+        self.name = name
+        self.block = block
 
 
 class NoOp(AST):
@@ -227,7 +274,13 @@ class Parser:
         return node
     
     def program(self) -> Compound:
-        node = self.compound_statement()
+        self.eat(PROGRAM)
+        var_node = self.variable()
+        name = var_node.val
+        self.eat(SEMI)
+
+        block = self.block()
+        node = Program(name, block)
         self.eat(DOT)
         return node
     
@@ -271,6 +324,47 @@ class Parser:
         node = Var(self.curr_token)
         self.eat(ID)
         return node
+
+    def block(self) -> Block:
+        decl = self.declarations()
+        compound = self.compound_statement()
+        block = Block(decl, compound)
+        return block
+
+    def declarations(self) -> list[VarDecl]:
+        res = []
+
+        if self.curr_token.type == VAR:
+            self.eat(VAR)
+            while self.curr_token.type == ID:
+                var_decl = self.var_declaration()
+                res.extend(var_decl)
+                self.eat(SEMI)
+        return res
+
+    def var_declaration(self) -> list[VarDecl]:
+        var_nodes = [Var(self.curr_token)]
+        self.eat(ID)
+
+        while self.curr_token.type == COMMA:
+            self.eat(COMMA)
+            var_nodes.append(Var(self.curr_token))
+            self.eat(ID)
+
+        self.eat(COLON)
+        var_type = self.type_spec()
+        declarations = [VarDecl(node, var_type) for node in var_nodes]
+        return declarations
+
+    def type_spec(self) -> Type:
+        token = self.curr_token
+        if token.type == INTEGER_TYPE:
+            self.eat(INTEGER_TYPE)
+        else:
+            self.eat(REAL_TYPE)
+            
+        node = Type(token)
+        return node
     
     def empty(self) -> NoOp:
         return NoOp()
@@ -279,8 +373,11 @@ class Parser:
 class NodeVisitor:
     def visit(self, node: AST) -> object:
         method_name = 'visit_' + type(node).__name__
-        visitor = getattr(self, method_name)
+        visitor = getattr(self, method_name, self.generic_visit)
         return visitor(node)
+
+    def generic_visit(self, node: AST) -> None:
+        raise NotImplementedError(f'No visit_{type(node).__name__} method defined')
 
 
 class Interpreter(NodeVisitor):
@@ -320,12 +417,25 @@ class Interpreter(NodeVisitor):
 
     def visit_Var(self, node: Var) -> int:
         var_name = node.val
-        val = self.GLOBAL_SCOPE.get(var_name)
 
-        if val is None:
+        if var_name not in self.GLOBAL_SCOPE:
             raise NameError(repr(var_name))
         else:
-            return val
+            return self.GLOBAL_SCOPE[var_name]
+
+    def visit_Program(self, node: Program) -> None:
+        self.visit(node.block)
+
+    def visit_Block(self, node: Block) -> None:
+        for declaration in node.declarations:
+            self.visit(declaration)
+        self.visit(node.compound_statement)
+
+    def visit_VarDecl(self, node: VarDecl) -> None:
+        pass
+
+    def visit_Type(self, node: Type) -> None:
+        pass
 
     def visit_NoOp(self, node: NoOp) -> None:
         pass
@@ -343,11 +453,14 @@ def main():
             break
         if not text:
             continue
-        lexer = Lexer(text)
-        parser = Parser(lexer)
-        interpreter = Interpreter(parser)
-        res = interpreter.interpret()
-        print(interpreter.GLOBAL_SCOPE)
+        try:
+            lexer = Lexer(text)
+            parser = Parser(lexer)
+            interpreter = Interpreter(parser)
+            res = interpreter.interpret()
+            print(interpreter.GLOBAL_SCOPE)
+        except Exception as e:
+            print(e)
 
 if __name__ == '__main__':
     main()
